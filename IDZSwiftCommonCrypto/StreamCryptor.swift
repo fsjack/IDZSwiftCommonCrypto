@@ -140,6 +140,35 @@ public class StreamCryptor
         }
     }
     
+    public enum Mode
+    {
+        case ECB
+        case CBC
+        case CFB
+        case CTR
+        case F8
+        case LRW
+        case OFB
+        case XTS
+        case RC4
+        case CFB8
+        
+        func nativeValue() -> CCMode {
+            switch self {
+            case .ECB: return CCMode(kCCModeECB)
+            case .CBC: return CCMode(kCCModeCBC)
+            case .CFB: return CCMode(kCCModeCFB)
+            case .CTR: return CCMode(kCCModeCTR)
+            case .F8: return CCMode(kCCModeF8)
+            case .LRW: return CCMode(kCCModeLRW)
+            case .OFB: return CCMode(kCCModeOFB)
+            case .XTS: return CCMode(kCCModeXTS)
+            case .RC4: return CCMode(kCCModeRC4)
+            case .CFB8: return CCMode(kCCModeCFB8)
+            }
+        }
+    }
+    
     /*
     * It turns out to be rather tedious to reprent ORable
     * bitmask style options in Swift. I would love to
@@ -190,14 +219,14 @@ public class StreamCryptor
         - parameter key: a byte array containing key data
         - parameter iv: a byte array containing initialization vector
     */
-    public convenience init(operation: Operation, algorithm: Algorithm, options: Options, key: [UInt8],
+    public convenience init(operation: Operation, algorithm: Algorithm,  mode: Mode? = nil, options: Options, key: [UInt8],
         iv : [UInt8])
     {
         guard let paddedKeySize = algorithm.paddedKeySize(key.count) else {
             fatalError("FATAL_ERROR: Invalid key size")
         }
         
-        self.init(operation:operation, algorithm:algorithm, options:options,
+        self.init(operation:operation, algorithm:algorithm, mode:mode,  options:options,
             keyBuffer:zeroPad(key, paddedKeySize), keyByteCount:paddedKeySize, ivBuffer:iv)
     }
     /**
@@ -208,7 +237,7 @@ public class StreamCryptor
         - parameter key: a string containing key data (will be interpreted as UTF8)
         - parameter iv: a string containing initialization vector data (will be interpreted as UTF8)
     */
-    public convenience init(operation: Operation, algorithm: Algorithm, options: Options, key: String,
+    public convenience init(operation: Operation, algorithm: Algorithm, mode: Mode? = nil, options: Options, key: String,
         iv : String)
     {
         let keySize = key.utf8.count
@@ -216,7 +245,7 @@ public class StreamCryptor
             fatalError("FATAL_ERROR: Invalid key size")
         }
         
-        self.init(operation:operation, algorithm:algorithm, options:options,
+        self.init(operation:operation, algorithm:algorithm, mode: mode, options:options,
             keyBuffer:zeroPad(key, paddedKeySize),
             keyByteCount:paddedKeySize, ivBuffer:iv)
     }
@@ -290,12 +319,17 @@ public class StreamCryptor
         - parameter keyByteCount: number of bytes in the key
         - parameter ivBuffer: initialization vector buffer
     */
-    public init(operation: Operation, algorithm: Algorithm, options: Options, keyBuffer: UnsafePointer<Void>,
+    public init(operation: Operation, algorithm: Algorithm, mode: Mode? = nil, options: Options, keyBuffer: UnsafePointer<Void>,
         keyByteCount: Int, ivBuffer: UnsafePointer<Void>)
     {
         guard algorithm.isValidKeySize(keyByteCount) else  { fatalError("FATAL_ERROR: Invalid key size.") }
-
-        let rawStatus = CCCryptorCreate(operation.nativeValue(), algorithm.nativeValue(), CCOptions(options.rawValue), keyBuffer, keyByteCount, ivBuffer, context)
+        
+        let rawStatus: CCCryptorStatus
+        if let mode = mode {
+            rawStatus = CCCryptorCreateWithMode(operation.nativeValue(), mode.nativeValue(), algorithm.nativeValue(), CCPadding(0), ivBuffer, keyBuffer, keyByteCount, nil, 0, 0, CCOptions(options.rawValue), context)
+        } else {
+            rawStatus = CCCryptorCreate(operation.nativeValue(), algorithm.nativeValue(), CCOptions(options.rawValue), keyBuffer, keyByteCount, ivBuffer, context)
+        }
         if let status = Status.fromRaw(rawStatus)
         {
             self.status = status
